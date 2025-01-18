@@ -1,7 +1,12 @@
+from typing import Literal
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import maskmean, maskstd, normalize_data, clip_outliers, seed_everything
+try:
+    from utils import normalize_data, clip_outliers, flash_context
+except ImportError:
+    from .utils import normalize_data, clip_outliers, flash_context
 
 class TransformerEncoderLayer(nn.Module):
     def __init__(self, embed_dim, num_heads, ff_dim):
@@ -36,7 +41,7 @@ class TransformerEncoderLayer(nn.Module):
         return x
 
 class TabDPTModel(nn.Module):
-    def __init__(self, dropout: float, n_out: int, nhead: int, nhid: int, ninp: int, nlayers: int, norm_first: bool, num_features: int):
+    def __init__(self, dropout: float, n_out: int, nhead: int, nhid: int, ninp: int, nlayers: int, norm_first: bool, num_features: int, use_bf16: bool):
         super().__init__()
         self.n_out = n_out
         self.num_features = num_features
@@ -51,18 +56,23 @@ class TabDPTModel(nn.Module):
                 for _ in range(nlayers)
             ]
         )
+        self.use_flash = torch.cuda.is_available() and use_bf16
 
-    @torch.no_grad()
+    @flash_context
     def forward(
         self,
         x_src: torch.Tensor,
         y_src: torch.Tensor,
-        task: str,
+        task: Literal["cls", "reg"],  # classification or regression
     ) -> torch.Tensor:
-        eval_pos = y_src.shape[0]
-
+        eval_pos = y_src.shape[1]
         x_src = normalize_data(x_src, -1 if self.training else eval_pos)
+        
         x_src = clip_outliers(x_src, -1 if self.training else eval_pos, n_sigma=10)
+        if task == "reg":
+            y_src, mean_y, std_y = normalize_data(y_src, return_mean_std=True)
+            y_src = clip_outliers(y_src)
+        
         x_src = torch.nan_to_num(x_src, nan=0)
 
         x_src = self.encoder(x_src)
@@ -71,19 +81,21 @@ class TabDPTModel(nn.Module):
         rms = torch.sqrt(mean)
         x_src = x_src / rms
 
-        y_src = self.y_encoder(y_src.unsqueeze(-1))
-        train_x = x_src[:eval_pos] + y_src
-        src = torch.cat([train_x, x_src[eval_pos:]], 0)
+        y_src = self.y_encoder(y_src)
+        train_x = x_src[:, :eval_pos] + y_src
+        src = torch.cat([train_x, x_src[:, eval_pos:]], 1)
 
-        src = src.transpose(0, 1) # (B, L, d) shape
         for layer in self.transformer_encoder:
             src = layer(src, eval_pos)
         pred = self.task2head[task](src)
 
-        return pred[:, eval_pos:].transpose(0, 1) # back to (L, B, d) shape
+        if task == "reg":
+            pred = pred * std_y + mean_y
+
+        return pred[:, eval_pos:]
 
     @classmethod
-    def load(cls, model_state, config):
+    def load(cls, model_state, config, use_bf16):
         model = TabDPTModel(
             dropout=config['training']['dropout'],
             n_out=config['model']['max_num_classes'],
@@ -93,6 +105,7 @@ class TabDPTModel(nn.Module):
             nlayers=config['model']['nlayers'],
             norm_first=config['model']['norm_first'],
             num_features=config['model']['max_num_features'],
+            use_bf16=use_bf16
         )
 
         # Remove any module prefixes if necessary
