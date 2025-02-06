@@ -18,7 +18,7 @@ class TabDPTEstimator(BaseEstimator):
         # automatically download model weight if path is empty
         if path == '':
             path = download_model()
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location='cpu')
         self.model = TabDPTModel.load(model_state=checkpoint['model'], config=checkpoint['cfg'], use_flash=use_flash)
         self.model.eval()
         self.max_features = self.model.num_features

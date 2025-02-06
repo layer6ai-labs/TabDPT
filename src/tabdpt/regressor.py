@@ -16,7 +16,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
         train_x, train_y, test_x = self._prepare_prediction(X)
         
         if seed is not None:
-            feat_perm = generate_random_permutation(self.n_features, seed)
+            feat_perm = generate_random_permutation(train_x.shape[1], seed)
             train_x = train_x[:, feat_perm]
             test_x = test_x[:, feat_perm]
         
@@ -30,7 +30,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
                 task=self.mode,
             )
             
-            return pred.float().squeeze().detach().cpu().numpy()
+            return pred.float().squeeze().detach().cpu().float().numpy()
         else:
             pred_list = []
             for b in range(math.ceil(len(self.X_test) / self.inf_batch_size)):
@@ -57,7 +57,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
 
                 pred_list.append(pred)
 
-            return torch.cat(pred_list).squeeze().detach().cpu().numpy()
+            return torch.cat(pred_list).squeeze().detach().cpu().float().numpy()
 
     def _ensemble_predict(self, X: np.ndarray, n_ensembles: int, context_size: int = 128):
         logits_cumsum = None
