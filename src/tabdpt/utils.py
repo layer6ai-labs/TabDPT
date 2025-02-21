@@ -30,7 +30,8 @@ def flash_context(func):
             assert torch.cuda.is_available(), "FlashAttention requires CUDA support"
             bf_support = torch.cuda.get_device_capability()[0] >= 8
             dtype = torch.bfloat16 if bf_support else torch.float16
-            with torch.autocast(device_type='cuda', dtype=dtype), sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+            device_type = f"cuda:{torch.cuda.current_device()}"
+            with torch.autocast(device_type=device_type, dtype=dtype), sdpa_kernel(SDPBackend.FLASH_ATTENTION):
                 return func(self, *args, **kwargs)
         else:
             return func(self, *args, **kwargs)
@@ -92,8 +93,11 @@ def pad_x(X: torch.Tensor, num_features=100):
     if num_features is None:
         return X
     n_features = X.shape[-1]
-    zero_feature_padding = torch.zeros((*X.shape[:-1], num_features - n_features), device=X.device)
-    return torch.cat([X, zero_feature_padding], dim=-1)
+    if num_features > n_features:
+        zero_feature_padding = torch.zeros((*X.shape[:-1], num_features - n_features), device=X.device)
+        return torch.cat([X, zero_feature_padding], dim=-1)
+    else:
+        return X[..., :num_features]
 
 
 class FAISS:
