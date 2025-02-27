@@ -70,6 +70,22 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
                 logits_cumsum += logits
         return logits_cumsum / n_ensembles
     
+    def predict_knn(self, X: np.ndarray, n_ensembles: int = 1, context_size: int = 128, seed=None):
+        train_x, train_y, test_x = self._prepare_prediction(X)
+        
+        if context_size >= self.n_instances:
+            pred_val = train_y.mean().item() * torch.ones((len(test_x), 1), dtype=torch.float32)
+        else:
+            indices_nni = self.faiss_knn.get_knn_indices(
+                self.X_test, k=context_size
+            )
+            # X_nni = train_x[torch.tensor(indices_nni)] # batch_size x context_size x num_features
+            y_nni = train_y[torch.tensor(indices_nni)] # batch_size x context_size
+            
+            pred_val = y_nni.mean(dim=1, keepdim=True)
+            
+        return pred_val.detach().cpu().numpy()
+    
     def predict(self, X: np.ndarray, n_ensembles: int = 1, context_size: int = 128, seed=None):
         if n_ensembles == 1:
             return self._predict(X, context_size=context_size, seed=seed)

@@ -39,6 +39,29 @@ class TabDPTClassifier(TabDPTEstimator, ClassifierMixin):
             full_pred[:, :, class_idx] = class_pred
 
         return full_pred
+    
+    def predict_proba_knn(self, X: np.ndarray, temperature: float = 0.8, context_size: int = 128, return_logits: bool = False, seed: int = None):
+        train_x, train_y, test_x = self._prepare_prediction(X)
+        
+        if context_size >= self.n_instances:
+            probs = torch.bincount(train_y.long()) / len(train_y)
+            log_probs = torch.log(probs + 1e-6)
+            pred_val = torch.nn.functional.softmax(log_probs / temperature, dim=-1).repeat(len(test_x), 1)
+        else:
+            indices_nni = self.faiss_knn.get_knn_indices(
+                self.X_test, k=context_size
+            )
+            # X_nni = train_x[torch.tensor(indices_nni)] # batch_size x context_size x num_features
+            y_nni = train_y[torch.tensor(indices_nni)] # batch_size x context_size
+            
+            num_classes = len(train_y.unique())
+            counts = torch.zeros((len(self.X_test), num_classes), dtype=torch.long, device=y_nni.device)
+            counts.scatter_add_(1, y_nni.long(), torch.ones_like(y_nni, dtype=torch.long))
+            probs = counts.float() / counts.sum(dim=1, keepdims=True)
+            log_probs = torch.log(probs + 1e-6)
+            pred_val = torch.nn.functional.softmax(log_probs / temperature, dim=-1)
+            
+        return pred_val.detach().cpu().numpy()
 
     @torch.no_grad()
     def predict_proba(self, X: np.ndarray, temperature: float = 0.8, context_size: int = 128, return_logits: bool = False, seed: int = None):
