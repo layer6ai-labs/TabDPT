@@ -36,7 +36,7 @@ class TabDPTClassifier(TabDPTEstimator, ClassifierMixin):
             for digit_idx, digit_pred in enumerate(digit_preds):
                 digit_value = (class_idx // (self.max_num_classes ** digit_idx)) % self.max_num_classes
                 class_pred += digit_pred[:, :, digit_value]
-            full_pred[:, :, class_idx] = class_pred
+            full_pred[:, :, class_idx] = class_pred.transpose(0, 1)
 
         return full_pred
 
@@ -64,8 +64,8 @@ class TabDPTClassifier(TabDPTEstimator, ClassifierMixin):
                 pred = self._predict_large_cls(X_train, X_test, y_train)
             
             pred = pred[..., :self.num_classes] / temperature
-            pred = torch.nn.functional.softmax(pred, dim=-1)
-            pred_val = pred.float().squeeze().detach().cpu().numpy()
+            pred = torch.nn.functional.softmax(pred.float(), dim=-1)
+            pred_val = pred.squeeze().detach().cpu().numpy()
         else:
             pred_list = []
             for b in range(math.ceil(len(self.X_test) / self.inf_batch_size)):
@@ -94,8 +94,9 @@ class TabDPTClassifier(TabDPTEstimator, ClassifierMixin):
                 else:
                     pred = self._predict_large_cls(X_nni, X_eval, y_nni)
 
+                pred = pred.float()
                 if not return_logits:
-                    pred = pred[..., :self.num_classes].float() / temperature
+                    pred = pred[..., :self.num_classes] / temperature
                     pred = torch.nn.functional.softmax(pred, dim=-1)
                     pred /= pred.sum(axis=-1, keepdims=True) # numerical stability
 
