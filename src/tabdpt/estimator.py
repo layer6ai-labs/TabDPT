@@ -18,7 +18,7 @@ class TabDPTEstimator(BaseEstimator):
         # automatically download model weight if path is empty
         if path == '':
             path = download_model()
-        checkpoint = torch.load(path, map_location='cpu')
+        checkpoint = torch.load(path, map_location='cpu', weights_only=False)
         checkpoint['cfg']['env']['device'] = self.device
         self.model = TabDPTModel.load(model_state=checkpoint['model'], config=checkpoint['cfg'], use_flash=use_flash)
         self.model.eval()
@@ -38,7 +38,7 @@ class TabDPTEstimator(BaseEstimator):
         X = self.imputer.fit_transform(X)
         self.scaler = StandardScaler()
         X = self.scaler.fit_transform(X)
-        
+
         self.faiss_knn = FAISS(X)
         self.n_instances, self.n_features = X.shape
         self.X_train = X
@@ -46,7 +46,7 @@ class TabDPTEstimator(BaseEstimator):
         self.is_fitted_ = True
         if self.compile:
             self.model = torch.compile(self.model)
-        
+
     def _prepare_prediction(self, X: np.ndarray):
         check_is_fitted(self)
         self.X_test = self.imputer.transform(X)
@@ -63,6 +63,6 @@ class TabDPTEstimator(BaseEstimator):
             train_x = train_x @ self.V
         else:
             self.V = None
-        
+
         test_x = test_x @ self.V if self.V is not None else test_x
         return train_x, train_y, test_x

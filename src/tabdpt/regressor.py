@@ -7,6 +7,7 @@ from tqdm import tqdm
 from .estimator import TabDPTEstimator
 from .utils import pad_x, generate_random_permutation
 
+
 class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
     def __init__(self, path: str = '', inf_batch_size: int = 512, device: str = 'cuda:0', use_flash: bool = True, compile: bool = True):
         super().__init__(path=path, mode='reg', inf_batch_size=inf_batch_size, device=device, use_flash=use_flash, compile=compile)
@@ -14,12 +15,12 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
     @torch.no_grad()
     def _predict(self, X: np.ndarray, context_size: int = 128, seed=None):
         train_x, train_y, test_x = self._prepare_prediction(X)
-        
+
         if seed is not None:
             feat_perm = generate_random_permutation(train_x.shape[1], seed)
             train_x = train_x[:, feat_perm]
             test_x = test_x[:, feat_perm]
-        
+
         if context_size >= self.n_instances:
             X_train = pad_x(train_x[None, :, :], self.max_features).to(self.device)
             X_test = pad_x(test_x[None, :, :], self.max_features).to(self.device)
@@ -29,7 +30,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
                 y_src=y_train.unsqueeze(-1),
                 task=self.mode,
             )
-            
+
             return pred.float().squeeze().detach().cpu().float().numpy()
         else:
             pred_list = []
@@ -55,7 +56,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
                     task=self.mode,
                 )
 
-                pred_list.append(pred)
+                pred_list.append(pred.squeeze())
 
             return torch.cat(pred_list).squeeze().detach().cpu().float().numpy()
 
@@ -69,7 +70,7 @@ class TabDPTRegressor(TabDPTEstimator, RegressorMixin):
             else:
                 logits_cumsum += logits
         return logits_cumsum / n_ensembles
-    
+
     def predict(self, X: np.ndarray, n_ensembles: int = 1, context_size: int = 128, seed=None):
         if n_ensembles == 1:
             return self._predict(X, context_size=context_size, seed=seed)

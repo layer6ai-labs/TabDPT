@@ -1,8 +1,9 @@
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import r2_score
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+
 from tabdpt import TabDPTRegressor
+
 
 X, y = fetch_california_housing(return_X_y=True)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
